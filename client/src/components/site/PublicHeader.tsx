@@ -109,6 +109,10 @@ export function PublicHeader() {
           <Actions />
         </div>
 
+        <SignedIn>
+          <Link to="/app/dashboard" className="rounded-full bg-brand-600 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-glow transition hover:bg-brand-700 lg:hidden">Dashboard</Link>
+        </SignedIn>
+
         <button type="button" onClick={() => setDrawer((d) => !d)} aria-expanded={drawer} aria-label="Menu" className="cursor-pointer rounded-xl p-2.5 text-ink-800 hover:bg-ink-100 lg:hidden">
           {drawer ? <X className="size-6" /> : <Menu className="size-6" />}
         </button>
