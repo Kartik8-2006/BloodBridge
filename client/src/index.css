@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-script: "Kaushan Script", "Brush Script MT", cursive;
+
+  --color-brand-50: #fff3f3;
+  --color-brand-100: #ffe1e1;
+  --color-brand-200: #ffc8c8;
+  --color-brand-300: #ff9f9f;
+  --color-brand-400: #f56b6b;
+  --color-brand-500: #e43d3d;
+  --color-brand-600: #cf2a2f;
+  --color-brand-700: #b01f24;
+  --color-brand-800: #8f1b20;
+  --color-brand-900: #751b1f;
+
+  /* Cool, clinical neutrals so the red carries all the warmth. */
+  --color-ink-50: #f8f9fa;
+  --color-ink-100: #f0f1f3;
+  --color-ink-200: #e2e5e9;
+  --color-ink-300: #cbd0d6;
+  --color-ink-400: #98a0aa;
+  --color-ink-500: #6b7480;
+  --color-ink-600: #4f5762;
+  --color-ink-700: #3a414b;
+  --color-ink-800: #272c34;
+  --color-ink-900: #181c22;
+
+  /* Plasma: the straw-yellow second series in charts and highlights. */
+  --color-plasma-50: #fff9e6;
+  --color-plasma-100: #fdf0c8;
+  --color-plasma-300: #f1cd6b;
+  --color-plasma-400: #e8b730;
+  --color-plasma-600: #b9860a;
+  --color-plasma-700: #96690a;
+  --color-wine-900: #4a1216;
+
+  --shadow-card: 0 1px 2px rgb(24 28 34 / 0.04), 0 8px 24px -12px rgb(24 28 34 / 0.12);
+  --shadow-glow: 0 10px 24px -10px rgb(207 42 47 / 0.55);
+}
+
+html, body, #root { height: 100%; }
+html, body { overflow-x: clip; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+body {
+  margin: 0;
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+.leaflet-container { font-family: var(--font-sans); border-radius: 1.25rem; z-index: 0; }
+.bb-pin { background: transparent; border: 0; }
+
+/* One orchestrated moment: the hero drop settles once on load. */
+@keyframes drop-in {
+  0% { transform: translateY(-14px) scale(.96); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-drop { animation: drop-in .7s cubic-bezier(.2,.8,.2,1) both; }
+}
+
+@media print {
+  .no-print, header, aside { display: none !important; }
+  body { background: #fff !important; }
+  main { padding: 0 !important; }
+  .print-sheet { box-shadow: none !important; border-width: 2px !important; }
+}
+
+.font-script { font-family: var(--font-script); font-weight: 400; }
+
+/* The desktop search is intentionally part of the masthead, not a page overlay. */
+.bb-header-search {
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(10px) scaleX(.92);
+  transform-origin: right center;
+  transition: width .28s cubic-bezier(.2,.8,.2,1), opacity .18s ease, transform .28s cubic-bezier(.2,.8,.2,1);
+}
+.bb-header-search-open {
+  width: 19rem;
+  opacity: 1;
+  transform: translateX(0) scaleX(1);
+  overflow: visible;
+}
+.bb-smart-search input:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bb-header-search { transition: none; }
+}
+
+/* Slide-in for the mobile menu and floating prompt. */
+@keyframes rise-in { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .rise-in { animation: rise-in .35s cubic-bezier(.2,.8,.2,1) both; }
+}
+dialog::backdrop { backdrop-filter: blur(3px); }

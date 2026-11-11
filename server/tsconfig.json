@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "ES2023"
+    ],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src",
+    "tests",
+    "prisma.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "src/routes",
+    "src/services/platform.service.ts",
+    "src/services/user.service.ts",
+    "src/utils"
+  ]
+}

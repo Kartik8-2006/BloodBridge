@@ -1,0 +1,13 @@
+{
+  "name": "bloodbridge",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "db:push": "npm --prefix server run db:push",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix server run build && npm --prefix client run build"
+  }
+}

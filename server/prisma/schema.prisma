@@ -1,0 +1,504 @@
+// BloodBridge data model — Phase 1 (foundation, identity, hospital network).
+// Phase 2 adds BloodRequest, DonorResponse, Donation. Later: InventoryItem, Camp, Subscription, Payment.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  DONOR
+  REQUESTER
+  HOSPITAL
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+/// UNCLAIMED: imported from OpenStreetMap, nobody from the hospital has joined yet.
+/// PENDING:   a hospital representative submitted documents, waiting for admin review.
+/// VERIFIED:  admin approved; hospital can use inventory, requests and camps.
+/// REJECTED:  admin rejected the submission; representative can fix and resubmit.
+/// SUSPENDED: admin removed platform access.
+enum HospitalStatus {
+  UNCLAIMED
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum HospitalSource {
+  OSM
+  PLATFORM
+}
+
+enum FacilityType {
+  HOSPITAL
+  BLOOD_BANK
+}
+
+enum NotificationType {
+  WELCOME
+  HOSPITAL_SUBMITTED
+  HOSPITAL_APPROVED
+  HOSPITAL_REJECTED
+  HOSPITAL_SUSPENDED
+  REQUEST_MATCH
+  REQUEST_ACCEPTED
+  REQUEST_UPDATE
+  REQUEST_CANCELLED
+  DONATION_COMPLETE
+  PAYMENT_SUCCESS
+  FRAUD_ALERT
+  CAMP_NEW
+  CAMP_UPDATE
+  LOW_STOCK
+  REMINDER
+  ACCOUNT
+  SYSTEM
+}
+
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+enum Urgency {
+  CRITICAL
+  URGENT
+  PLANNED
+}
+
+/// INVITED: donor was matched and alerted. ACCEPTED: donor committed, holds a handshake code.
+/// DONATED: hospital confirmed the code at the desk. DECLINED / CANCELLED: donor or request withdrew.
+enum ResponseStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  DONATED
+  CANCELLED
+}
+
+model User {
+  id          String        @id @default(cuid())
+  clerkId     String        @unique
+  email       String
+  name        String
+  imageUrl    String?
+  phone       String?
+  role        Role?
+  status      AccountStatus @default(ACTIVE)
+  city        String?
+  /// Home location. Used for requesters; donors store theirs on DonorProfile.
+  lat         Float?
+  lng         Float?
+  /// Notification and communication preferences. Shape is validated in the API layer.
+  prefs       Json          @default("{}")
+  onboardedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  donorProfile  DonorProfile?
+  hospitalId    String?
+  hospital      Hospital?        @relation("HospitalStaff", fields: [hospitalId], references: [id], onDelete: SetNull)
+  claimedBy     Hospital[]       @relation("HospitalClaimant")
+  reviewed      Hospital[]       @relation("HospitalReviewer")
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  requests      BloodRequest[]  @relation("RequestOwner")
+  responses     DonorResponse[]
+  donations     Donation[]      @relation("DonationDonor")
+  campRegistrations CampRegistration[] @relation("CampDonor")
+  verifiedDonations Donation[]  @relation("DonationVerifier")
+
+  @@index([email])
+  @@index([role])
+  @@index([createdAt])
+  @@index([hospitalId])
+}
+
+model DonorProfile {
+  id             String     @id @default(cuid())
+  userId         String     @unique
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bloodGroup     BloodGroup
+  dateOfBirth    DateTime
+  gender         Gender
+  weightKg       Float
+  lat            Float
+  lng            Float
+  city           String
+  addressLine    String?
+  lastDonationAt DateTime?
+  /// Donor-controlled switch. Only available donors receive request alerts.
+  available      Boolean    @default(true)
+  /// Self-declared screening answers. Final screening is always done by the hospital.
+  health         Json       @default("{}")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([bloodGroup, available])
+  @@index([lat, lng])
+}
+
+model Hospital {
+  id        String         @id @default(cuid())
+  /// OpenStreetMap element reference such as "node/123" or "way/456". Null for platform-registered facilities.
+  osmId     String?        @unique
+  source    HospitalSource
+  type      FacilityType   @default(HOSPITAL)
+  name      String
+  addressLine String?
+  city      String?
+  state     String?
+  postcode  String?
+  lat       Float
+  lng       Float
+  phone     String?
+  email     String?
+  website   String?
+  /// "private", "government", "charity" etc. as tagged in OSM or declared during registration.
+  ownership String?
+  hasEmergency Boolean     @default(false)
+  /// Inventory alert: a blood group at or below this many units is reported as low.
+  lowStockThreshold Int    @default(5)
+
+  status         HospitalStatus @default(UNCLAIMED)
+  licenseNumber  String?
+  licenseDocPath String?
+  contactPerson  String?
+  contactDesignation String?
+  submittedAt    DateTime?
+  claimedById    String?
+  claimedBy      User?          @relation("HospitalClaimant", fields: [claimedById], references: [id], onDelete: SetNull)
+  reviewedById   String?
+  reviewedBy     User?          @relation("HospitalReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  reviewNote     String?
+  verifiedAt     DateTime?
+
+  staff     User[]   @relation("HospitalStaff")
+  requests  BloodRequest[]
+  donations Donation[]
+  inventory InventoryItem[]
+  inventoryLogs InventoryLog[]
+  camps     Camp[]
+  subscription Subscription?
+  payments  Payment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([lat, lng])
+  @@index([city])
+}
+
+/// Remembers which map cells were already imported from OpenStreetMap so we do not hammer Overpass.
+model OsmSyncArea {
+  key            String   @id
+  lat            Float
+  lng            Float
+  radiusKm       Int
+  hospitalsFound Int
+  syncedAt       DateTime @default(now())
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model BloodRequest {
+  id             String        @id @default(cuid())
+  requesterId    String
+  requester      User          @relation("RequestOwner", fields: [requesterId], references: [id], onDelete: Cascade)
+  hospitalId     String
+  hospital       Hospital      @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  patientName    String
+  bloodGroup     BloodGroup
+  unitsNeeded    Int
+  unitsFulfilled Int           @default(0)
+  urgency        Urgency
+  neededBy       DateTime
+  contactPhone   String
+  note           String?
+  status         RequestStatus @default(OPEN)
+  /// How many donors were alerted so far (grows when the search radius is widened).
+  codeAttempts   Int           @default(0)
+  codeLockedUntil DateTime?
+  matchedCount   Int           @default(0)
+  radiusKm       Int           @default(10)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  responses DonorResponse[]
+  donations Donation[]
+
+  @@index([status, neededBy])
+  @@index([requesterId])
+  @@index([hospitalId, status])
+}
+
+model DonorResponse {
+  id            String         @id @default(cuid())
+  requestId     String
+  request       BloodRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  donorId       String
+  donor         User           @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  status        ResponseStatus @default(INVITED)
+  distanceKm    Float
+  /// SHA-256 of responseId + 6 digit code. The code itself is only ever shown to the donor.
+  codeHash      String?
+  codeExpiresAt DateTime?
+  respondedAt   DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  donation Donation?
+
+  @@unique([requestId, donorId])
+  @@index([donorId, status])
+  @@index([requestId, status])
+}
+
+model Donation {
+  id            String         @id @default(cuid())
+  certificateNo String         @unique
+  donorId       String
+  donor         User           @relation("DonationDonor", fields: [donorId], references: [id], onDelete: Cascade)
+  hospitalId    String
+  hospital      Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  requestId     String?
+  request       BloodRequest?  @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  responseId    String?        @unique
+  response      DonorResponse? @relation(fields: [responseId], references: [id], onDelete: SetNull)
+  bloodGroup    BloodGroup
+  units         Int            @default(1)
+  donatedAt     DateTime       @default(now())
+  verifiedById  String?
+  verifiedBy    User?          @relation("DonationVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([donorId, donatedAt])
+  @@index([hospitalId, donatedAt])
+}
+
+/// Newsletter / "stay up to date" sign-ups from the public site.
+model Subscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  city      String?
+  createdAt DateTime @default(now())
+}
+
+enum InventoryReason {
+  RECEIVED
+  ISSUED
+  EXPIRED
+  ADJUSTED
+}
+
+/// Current units of one blood group held by a hospital or blood bank.
+model InventoryItem {
+  id         String     @id @default(cuid())
+  hospitalId String
+  hospital   Hospital   @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  bloodGroup BloodGroup
+  units      Int        @default(0)
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([hospitalId, bloodGroup])
+}
+
+/// Append-only ledger. Current stock is the sum of its deltas; analytics read from it.
+model InventoryLog {
+  id         String          @id @default(cuid())
+  hospitalId String
+  hospital   Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  bloodGroup BloodGroup
+  delta      Int
+  reason     InventoryReason
+  note       String?
+  actorId    String?
+  createdAt  DateTime        @default(now())
+
+  @@index([hospitalId, createdAt])
+}
+
+enum CampStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum CampRegStatus {
+  REGISTERED
+  ATTENDED
+  NO_SHOW
+  CANCELLED
+}
+
+model Camp {
+  id          String    @id @default(cuid())
+  hospitalId  String
+  hospital    Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdById String?
+  title       String
+  description String?
+  venue       String
+  city        String
+  lat         Float
+  lng         Float
+  startsAt    DateTime
+  endsAt      DateTime
+  capacity    Int
+  status      CampStatus @default(SCHEDULED)
+  registrations CampRegistration[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, startsAt])
+  @@index([hospitalId])
+}
+
+model CampRegistration {
+  id        String        @id @default(cuid())
+  campId    String
+  camp      Camp          @relation(fields: [campId], references: [id], onDelete: Cascade)
+  donorId   String
+  donor     User          @relation("CampDonor", fields: [donorId], references: [id], onDelete: Cascade)
+  status    CampRegStatus @default(REGISTERED)
+  createdAt DateTime      @default(now())
+
+  @@unique([campId, donorId])
+  @@index([donorId])
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+}
+
+/// One row per hospital. Pro access lasts until currentPeriodEnd; each payment extends it.
+model Subscription {
+  id               String             @id @default(cuid())
+  hospitalId       String             @unique
+  hospital         Hospital           @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  status           SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd DateTime
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model Payment {
+  id         String          @id @default(cuid())
+  hospitalId String
+  hospital   Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  userId     String?
+  orderId    String          @unique
+  paymentId  String?         @unique
+  amount     Int             /// in paise
+  currency   String          @default("INR")
+  interval   BillingInterval
+  status     PaymentStatus   @default(CREATED)
+  createdAt  DateTime        @default(now())
+  paidAt     DateTime?
+
+  @@index([hospitalId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum FraudSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum FraudStatus {
+  OPEN
+  DISMISSED
+  CONFIRMED
+}
+
+/// A suspicious pattern the rules engine noticed. Always a human decision in the end; nothing is blocked automatically except desk-code brute force.
+model FraudFlag {
+  id           String        @id @default(cuid())
+  kind         String
+  severity     FraudSeverity
+  status       FraudStatus   @default(OPEN)
+  subjectType  String
+  subjectId    String
+  userId       String?
+  summary      String
+  detail       Json?
+  note         String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@unique([kind, subjectId])
+  @@index([status, createdAt])
+}

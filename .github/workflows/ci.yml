@@ -1,0 +1,30 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: bloodbridge_test }
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    defaults: { run: { working-directory: server } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: server/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+  client:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: client } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: client/package-lock.json }
+      - run: npm ci
+      - run: npx tsc -p tsconfig.app.json --noEmit
+      - run: npm run build
+        env: { VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci }

@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "src/routes",
+    "src/services/platform.service.ts",
+    "src/services/user.service.ts",
+    "src/utils",
+    "tests"
+  ]
+}
